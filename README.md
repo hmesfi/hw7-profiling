@@ -78,7 +78,7 @@ function from our UM module. It does not know the secrets of the UM module,
 it only has access to the run function. 
 
 
-Time it takes to execute
+Time it takes to execute 50 million instructions
 -----------------------------------
 About 4 seconds, we know this because our UM takes about 6 seconds to execute
 the 80 million instructions inside midmark.um
@@ -137,5 +137,7 @@ Time Spent
 -----------------------------------
 
 Analyzing the assignment - 2 hours
+
 Preparing the design - 6 hours
+
 Solving the problems after analysis - 15 hours
