@@ -227,9 +227,9 @@ static inline void load_value(um_T *um, uint32_t value)
 */
 static inline void set_three_registers(uint32_t instruction, um_T *um)
 {
-        um->ra = Bitpack_getu(instruction, REGISTER_LEN, REGISTER_LEN * 2);
-        um->rb = Bitpack_getu(instruction, REGISTER_LEN, REGISTER_LEN);
-        um->rc = Bitpack_getu(instruction, REGISTER_LEN, 0);
+        um->ra = instruction << 23 >>29;
+        um->rb = instruction << 26 >> 29; //Bitpack_getu(instruction, REGISTER_LEN, REGISTER_LEN);
+        um->rc = instruction & 0x7; //Bitpack_getu(instruction, REGISTER_LEN, 0);
 }
 
 /* Purpose: specifically for opcode 13, takes the instruction bit and 
@@ -241,8 +241,8 @@ static inline void set_three_registers(uint32_t instruction, um_T *um)
 */
 static inline uint32_t set_one_register(uint32_t instruction, um_T *um)
 {
-        um->ra = Bitpack_getu(instruction, REGISTER_LEN, VALUE_LEN);
-        return Bitpack_getu(instruction, VALUE_LEN, 0);
+        um->ra = instruction << OP_CODE_LEN >> 29; //Bitpack_getu(instruction, REGISTER_LEN, VALUE_LEN);
+        return instruction << 7 >> 7; //Bitpack_getu(instruction, VALUE_LEN, 0);
 }
 
 /* Purpose: getter function that returns the opcode by extracting
@@ -253,7 +253,7 @@ static inline uint32_t set_one_register(uint32_t instruction, um_T *um)
 */
 static inline uint32_t get_opcode(uint32_t instruction)
 {
-        return Bitpack_getu(instruction, OP_CODE_LEN, 28);
+        return instruction >> 28; //Bitpack_getu(instruction, OP_CODE_LEN, 28);
 }
 
 
@@ -356,7 +356,8 @@ void run_um(Seq_T instructions)
         while (um.program_counter < program_length) {
 
                 um_instruction = segment_word(um.memory, 0, um.program_counter);
-                uint32_t op_code = get_opcode(um_instruction);
+                uint32_t op_code = um_instruction >> 28;
+                //get_opcode(um_instruction);
 
                 /* Ensures that the instruction is valid. */
                 assert(op_code < 14);
