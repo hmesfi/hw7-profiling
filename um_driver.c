@@ -21,6 +21,7 @@
 #include <bitpack.h>
 #include <seq.h>
 #include "um.h"
+#include <sys/stat.h>
 
 #define HINT 100
 #define INSTRUCTION_LEN 4
@@ -35,29 +36,34 @@ int main(int argc, char *argv[])
 
         FILE *fp = open_or_abort(argv[1], "rb");
 
+        /* 
+         * confirm scan of provided program successful, then get info 
+         * Note: size of file divided by 4 since 32-bit word == 4 bytes,
+         * so this gives us total number of 32-bit words
+         */
+        struct stat program_info;
+        assert(stat(argv[1], &program_info) == 0); 
+
+        /* Note: will only read up to the last complete word in file */
+        const int total_words = program_info.st_size / 4;
+
         /* Create the instruction stream that will be used to run the UM. */
-        Seq_T instruction_stream = Seq_new(HINT);
+        uint32_t instruction_stream[total_words];
         
-        int c = fgetc(fp);
-
-        while (c != EOF) {
-                uint32_t um_instruction = 0;
-
-                for (int i = INSTRUCTION_LEN - 1; i >= 0; i--) {
-                        um_instruction = Bitpack_newu(um_instruction,
-                                                      INSTRUCTION_LEN * 2,
-                                                      i * (INSTRUCTION_LEN * 2),
-                                                      c);
-                        c = fgetc(fp);
+        for (int word = 0; word < total_words; word++) {
+                instruction_stream[word] = 0;
+                for (int lsb = 24; lsb >= 0; lsb -= 8) {
+                        uint32_t piece = getc(fp);
+                        instruction_stream[word] = Bitpack_newu(
+                                                   instruction_stream[word],
+                                                   8,
+                                                   lsb,
+                                                   piece);
                 }
-
-                Seq_addhi(instruction_stream, 
-                          (void *)(uintptr_t) um_instruction);
         }
 
-        run_um(instruction_stream);
+        run_um(instruction_stream, total_words);
 
-        Seq_free(&instruction_stream);
         fclose(fp);
 
         return EXIT_SUCCESS; 

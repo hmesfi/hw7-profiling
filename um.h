@@ -27,6 +27,6 @@
 typedef struct um_T um_T;
 
 /* Performs all the functions of the UM. */
-void run_um(Seq_T instructions); 
+void run_um(uint32_t *instructions, uint32_t program_length); 
 
 #endif
