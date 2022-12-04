@@ -27,7 +27,7 @@
 int input()
 {
     int c = getchar();
-    assert((c >= 0) && (c <= 255));
+    assert((c >= -1) && (c <= 255));
 
     if (c == EOF) {
         c = ~(uint32_t)0;

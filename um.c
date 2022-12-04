@@ -40,13 +40,13 @@ struct um_T {
 *        
 * Output: an instance of the um
 */
-static inline um_T initalize_um(Seq_T instructions)
+static inline um_T initalize_um(uint32_t *instructions, uint32_t program_length)
 {
         um_T um;
 
         um.memory = mem_new();
 
-        initalize_program(um.memory, instructions);
+        initalize_program(um.memory, instructions, program_length);
 
         for (int i = 0; i < NUM_REGISTERS; i++) {
                 um.registers[i] = 0;
@@ -278,6 +278,7 @@ static inline void execute_command(um_T *um, uint32_t instruction,
                         break;
                 case 1: 
                         set_three_registers(instruction, um);
+                        fprintf(stderr, "instruction: %x\n", instruction);
                         seg_load(um);
                         break;
                 case 2: 
@@ -329,28 +330,16 @@ static inline void execute_command(um_T *um, uint32_t instruction,
         (void)value;
 }
 
-/* Purpose: gets the length of the the program stored in m[0]
-* Input: um -- our Universal Machine struct containing our memory
-*        and register information
-* Output: the length of the program
-*/
-static inline uint32_t get_program_length(um_T *um)
-{
-        return segment_length(um->memory, 0);
-}
-
-
 /* Purpose: runs our UM program
 * Input: um -- our Universal Machine struct containing our memory
 *        and register information
 * Output: none
 */
-void run_um(Seq_T instructions)
+void run_um(uint32_t *instructions, uint32_t program_length)
 {
         uint32_t um_instruction;
 
-        um_T um = initalize_um(instructions);
-        uint32_t program_length = get_program_length(&um);
+        um_T um = initalize_um(instructions, program_length);
 
         /* UM will keep executing commands until it reaches the end of m[0]. */
         while (um.program_counter < program_length) {
@@ -360,6 +349,7 @@ void run_um(Seq_T instructions)
                 //get_opcode(um_instruction);
 
                 /* Ensures that the instruction is valid. */
+                // fprintf(stderr, "opcode: %u \n", op_code);
                 assert(op_code < 14);
 
                 if (op_code == 7) {
@@ -373,7 +363,7 @@ void run_um(Seq_T instructions)
                 /* If a new program is loaded, make sure that the program 
                  * length is changed. */
                 if (op_code == 12) {
-                        program_length = get_program_length(&um);
+                        program_length = get_program_length(um.memory);
                         continue;
                 }
 
