@@ -51,8 +51,6 @@ mem_T mem_new()
 */
 void mem_free(mem_T mem_segments) 
 {
-        assert(mem_segments != NULL);
-        
         uint32_t length = Seq_length(mem_segments->mapped_ids);
         
         /* Frees the array of words inside the memory segment. */
@@ -78,9 +76,8 @@ void mem_free(mem_T mem_segments)
 */
 uint32_t map_segment(mem_T mem_segments, uint32_t num_words)
 {
-        assert(Seq_length(mem_segments->mapped_ids) < pow(2, 32) + 1);
-
         seg_T new_segment = malloc(sizeof(*new_segment));
+        assert(new_segment != NULL);
 
         uint32_t *new_seg = calloc((num_words), sizeof(new_seg));
         assert(new_seg != NULL);
@@ -112,8 +109,6 @@ uint32_t map_segment(mem_T mem_segments, uint32_t num_words)
 */
 void unmap_segment(mem_T mem_segments, uint32_t id)
 {
-        assert(id < (uint32_t)Seq_length(mem_segments->mapped_ids));
-
         seg_T delete_segment = Seq_get(mem_segments->mapped_ids, id);
         assert(delete_segment != NULL);
 
@@ -158,8 +153,6 @@ void initalize_program(mem_T mem_segments, Seq_T instructions)
 */
 uint32_t segmented_load(mem_T mem_segments, uint32_t id, uint32_t index)
 {
-        assert(id < (uint32_t)Seq_length(mem_segments->mapped_ids));
-
         seg_T segment = Seq_get(mem_segments->mapped_ids, id);
         assert(segment != NULL);
 
@@ -176,8 +169,6 @@ uint32_t segmented_load(mem_T mem_segments, uint32_t id, uint32_t index)
 void segmented_store(mem_T mem_segments, uint32_t id, uint32_t index, 
                      uint32_t word)
 {
-        assert(id < (uint32_t)Seq_length(mem_segments->mapped_ids));
-
         seg_T segment = Seq_get(mem_segments->mapped_ids, id);
         assert(segment != NULL);
 
@@ -216,8 +207,6 @@ void load_program(mem_T mem_segments, uint32_t id)
 */
 uint32_t segment_length(mem_T mem_segments, uint32_t id)
 {
-        assert(mem_segments->mapped_ids != NULL);
-
         seg_T segment = Seq_get(mem_segments->mapped_ids, id);
         return segment->seg_length;
 }

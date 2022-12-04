@@ -178,11 +178,7 @@ static inline void input_command(um_T *um)
 {
         int c = input();
 
-        if (c == ~(0)){
-                um->registers[um->rc] = c;
-        } else {
-                um->registers[um->rc] = c;
-        }
+        um->registers[um->rc] = c;
 }
 
 /* Purpose: outputs the character stored in the register
