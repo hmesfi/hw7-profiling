@@ -30,15 +30,19 @@
 #define VALUE_LEN 25
 #define HINT 100
 
-typedef struct mem_T {
-        Seq_T mapped_ids;
-        Seq_T unmapped_ids;
-} *mem_T;
 
 typedef struct seg_T {
         uint32_t *segments; 
         int seg_length;
 } *seg_T;
+
+typedef struct mem_T {
+        seg_T *mapped_ids;
+        uint32_t mapped_used;
+        uint32_t mapped_length;
+
+        Seq_T unmapped_ids;
+} *mem_T;
 
 typedef struct um_T {
         mem_T memory;
@@ -53,6 +57,7 @@ static FILE *open_or_abort(char *fname, char *mode);
 void run_um(Seq_T instructions); 
 
 /* Memory Segment functions */
+
 /* Creates a memory instance. */
 mem_T mem_new();
 /* Frees a memory instance. */
@@ -88,17 +93,13 @@ int main(int argc, char *argv[])
 
         um.memory = mem_new();
 
-        //initialize_program(um.memory, instruction_stream);
-
-        /*******************************************************************/
-
         /* 
          * confirm scan of provided program successful, then get info 
          * Note: size of file divided by 4 since 32-bit word == 4 bytes,
          * so this gives us total number of 32-bit words
          */
         struct stat program_info;
-        assert(stat(argv[1], &program_info) == 0); // may be unneccessary
+        stat(argv[1], &program_info);
 
         /* Note: will only read up to the last complete word in file */
         const int total_words = program_info.st_size / 4;
@@ -106,22 +107,13 @@ int main(int argc, char *argv[])
         //map_seg(all_segments, total_words);
         initialize_program(um.memory, total_words);
 
-        //FILE *fp = fopen(pathname, "r");
-        //assert(fp != NULL);
-
         /* write each word in segment one byte at a time (big endian order) */
-        uint32_t *segment_zero = ((seg_T)Seq_get(um.memory->mapped_ids, 0))->segments;
+        uint32_t *segment_zero = (um.memory->mapped_ids[0])->segments;
         int c = fgetc(fp);
         uint32_t um_instruction, mask;
         
         for (int word = 0; word < total_words; word++) {
-                // for (int lsb = 24; lsb >= 0; lsb -= 8) {
-                //         uint32_t piece = getc(fp);
-                //         segment_zero[word] = Bitpack_newu(segment_zero[word], 
-                //                                           8,
-                //                                           lsb,
-                //                                           piece);
-                // }
+                
                 um_instruction = 0;
 
                 for (int i = INSTRUCTION_LEN - 1; i >= 0; i--) {
@@ -133,35 +125,6 @@ int main(int argc, char *argv[])
 
                 segment_zero[word] = um_instruction;
         }
-
-        //fclose(fp);
-        //return segment_zero;
-
-        /* Create the instruction stream that will be used to run the UM. */
-        // Seq_T instruction_stream = Seq_new(HINT);
-        
-        // int c = fgetc(fp);
-        // uint32_t um_instruction, mask;
-
-        // for (int word = 0; word < total_words; word++) {
-        //         um_instruction = 0;
-
-        //         for (int i = INSTRUCTION_LEN - 1; i >= 0; i--) {
-        //                 mask = c;
-        //                 mask = mask << (i * (INSTRUCTION_LEN * 2));
-        //                 um_instruction = um_instruction | mask;
-        //                 c = fgetc(fp);
-        //         }
-
-        //         Seq_addhi(instruction_stream, 
-        //                   (void *)(uintptr_t) um_instruction);
-        // }
-
-        //run_um(instruction_stream);
-        // uint32_t um_instruction;
-
-        //um_T um = initialize_um(instructions_stream);
-        
 
         for (int i = 0; i < NUM_REGISTERS; i++) {
                 um.registers[i] = 0;
@@ -258,7 +221,6 @@ int main(int argc, char *argv[])
                 um.program_counter++;
         }
 
-        //Seq_free(&instruction_stream);
         fclose(fp);
 
         return EXIT_SUCCESS; 
@@ -288,7 +250,10 @@ static FILE *open_or_abort(char *fname, char *mode)
 mem_T mem_new() 
 {
         mem_T memory = malloc(sizeof(*memory));
-        memory->mapped_ids = Seq_new(HINT);
+        memory->mapped_used = 0;
+        memory->mapped_length = 128;
+        memory->mapped_ids = calloc(memory->mapped_length, 
+                                        sizeof(seg_T));
         memory->unmapped_ids = Seq_new(HINT);
 
         return memory;
@@ -300,18 +265,18 @@ mem_T mem_new()
 */
 void mem_free(mem_T mem_segments) 
 {
-        uint32_t length = Seq_length(mem_segments->mapped_ids);
+        uint32_t length = mem_segments->mapped_length;
         
         /* Frees the array of words inside the memory segment. */
         for (uint32_t i = 0; i < length; i++) {
-                seg_T delete_segment = Seq_get(mem_segments->mapped_ids, i);
+                seg_T delete_segment = mem_segments->mapped_ids[i];
                 if (delete_segment != NULL) {
                         free(delete_segment->segments);
                         free(delete_segment);
                 }
         }
 
-        Seq_free(&(mem_segments->mapped_ids));
+        //Seq_free(&(mem_segments->mapped_ids));
         Seq_free(&(mem_segments->unmapped_ids));
         free(mem_segments);
 }
@@ -327,7 +292,7 @@ uint32_t map_segment(mem_T mem_segments, uint32_t num_words)
         seg_T new_segment = malloc(sizeof(*new_segment));
         assert(new_segment != NULL);
 
-        uint32_t *new_seg = calloc((num_words), sizeof(new_seg));
+        uint32_t *new_seg = calloc(num_words, sizeof(new_seg));
         assert(new_seg != NULL);
 
         new_segment->segments = new_seg;
@@ -339,13 +304,21 @@ uint32_t map_segment(mem_T mem_segments, uint32_t num_words)
         if (Seq_length(mem_segments->unmapped_ids) != 0) {
                 new_id = (uint32_t)(uintptr_t)
                          Seq_remlo(mem_segments->unmapped_ids);
-
-                Seq_put(mem_segments->mapped_ids, new_id, new_segment);
         } else {
-                new_id = Seq_length(mem_segments->mapped_ids);
+                new_id = mem_segments->mapped_used;
 
-                Seq_addhi(mem_segments->mapped_ids, new_segment);
+                if ((new_id == mem_segments->mapped_length) &&
+                    (mem_segments->mapped_length != UINT32_MAX)) {
+                        mem_segments->mapped_length =
+                                mem_segments->mapped_length * 2;
+                        mem_segments->mapped_ids = realloc(
+                                        mem_segments->mapped_ids,
+                                        mem_segments->mapped_length * sizeof(seg_T));
+                    }
         }
+
+        mem_segments->mapped_ids[new_id] = new_segment;
+        mem_segments->mapped_used++;
 
         return new_id;
 }
@@ -357,13 +330,16 @@ uint32_t map_segment(mem_T mem_segments, uint32_t num_words)
 */
 void unmap_segment(mem_T mem_segments, uint32_t id)
 {
-        seg_T delete_segment = Seq_get(mem_segments->mapped_ids, id);
-        assert(delete_segment != NULL);
+        seg_T delete_segment = mem_segments->mapped_ids[id];
+        //assert(delete_segment != NULL);
 
         free(delete_segment->segments);
         free(delete_segment);
         
-        Seq_put(mem_segments->mapped_ids, id, NULL);
+        mem_segments->mapped_ids[id] = NULL;
+        (mem_segments->mapped_used)--;
+        // Seq_put(mem_segments->mapped_ids, id, NULL);
+        
         Seq_addlo(mem_segments->unmapped_ids, (void *)(uintptr_t)id);
 }
 
@@ -380,17 +356,12 @@ void initialize_program(mem_T mem_segments, int program_length)
         uint32_t *m0 = calloc(program_length, sizeof(m0));
         assert(m0 != NULL);
 
-
-        // /* Copy the instructions from the stream of instructions into the 
-        //  * program. */
-        // for (int i = 0; i < Seq_length(instructions); i++) {
-        //         m0[i] = (uint32_t)(uintptr_t)Seq_get(instructions, i);
-        // }
-
         program->segments = m0;
         program->seg_length = program_length;
 
-        Seq_addhi(mem_segments->mapped_ids, program);
+        mem_segments->mapped_ids[0] = program;
+        (mem_segments->mapped_used)++;
+        // Seq_addhi(mem_segments->mapped_ids, program);
 }
 
 /* Purpose: loads a value from a memory segment
@@ -401,7 +372,9 @@ void initialize_program(mem_T mem_segments, int program_length)
 */
 uint32_t segmented_load(mem_T mem_segments, uint32_t id, uint32_t index)
 {
-        seg_T segment = Seq_get(mem_segments->mapped_ids, id);
+        // seg_T segment = Seq_get(mem_segments->mapped_ids, id);
+        seg_T segment = mem_segments->mapped_ids[id];
+        
         assert(segment != NULL);
 
         return segment->segments[index];
@@ -417,7 +390,8 @@ uint32_t segmented_load(mem_T mem_segments, uint32_t id, uint32_t index)
 void segmented_store(mem_T mem_segments, uint32_t id, uint32_t index, 
                      uint32_t word)
 {
-        seg_T segment = Seq_get(mem_segments->mapped_ids, id);
+        seg_T segment = mem_segments->mapped_ids[id];
+        // seg_T segment = Seq_get(mem_segments->mapped_ids, id);
         assert(segment != NULL);
 
         segment->segments[index] = word;
@@ -435,12 +409,14 @@ void load_program(mem_T mem_segments, uint32_t id)
                 return;
         }
 
-        seg_T segment = Seq_get(mem_segments->mapped_ids, id);
+        // seg_T segment = Seq_get(mem_segments->mapped_ids, id);
+        seg_T segment = mem_segments->mapped_ids[id];
         
         unmap_segment(mem_segments, 0);
 
         uint32_t new_id = map_segment(mem_segments, segment->seg_length);
-        seg_T new_m0 = Seq_get(mem_segments->mapped_ids, new_id);
+        seg_T new_m0 = mem_segments->mapped_ids[new_id];
+        // seg_T new_m0 = Seq_get(mem_segments->mapped_ids, new_id);
 
         /* Copy the instructions from segment into the new program. */
         for (int i = 0; i < segment->seg_length; i++) {
@@ -455,7 +431,9 @@ void load_program(mem_T mem_segments, uint32_t id)
 */
 uint32_t segment_length(mem_T mem_segments, uint32_t id)
 {
-        seg_T segment = Seq_get(mem_segments->mapped_ids, id);
+        // seg_T segment = Seq_get(mem_segments->mapped_ids, id);
+        seg_T segment = mem_segments->mapped_ids[id];
+        
         return segment->seg_length;
 }
 
@@ -467,9 +445,13 @@ uint32_t segment_length(mem_T mem_segments, uint32_t id)
 */
 uint32_t segment_word(mem_T mem_segments, uint32_t id, int index)
 {
-        seg_T segment = Seq_get(mem_segments->mapped_ids, id);
+        // seg_T segment = Seq_get(mem_segments->mapped_ids, id);
+        seg_T segment = mem_segments->mapped_ids[id];
+        
         return segment->segments[index];
 }
+
+
 
 /* UM FUNCTIONS */
 
