@@ -62,7 +62,7 @@ uint32_t map_segment(mem_T mem_segments, uint32_t num_words);
 /* Unmaps a memory segment. */
 void unmap_segment(mem_T mem_segments, uint32_t identifier);
 /* Creates the program m[0] and stores it in memory. */
-void initalize_program(mem_T mem_segments, Seq_T instructions);
+void initialize_program(mem_T mem_segments, Seq_T instructions);
 /* Retrieves a word from memory. */
 uint32_t segmented_load(mem_T mem_segments, uint32_t id, uint32_t index);
 /* Stores a word from memory. */
@@ -104,7 +104,112 @@ int main(int argc, char *argv[])
                           (void *)(uintptr_t) um_instruction);
         }
 
-        run_um(instruction_stream);
+        //run_um(instruction_stream);
+        uint32_t um_instruction;
+
+        //um_T um = initialize_um(instructions_stream);
+        um_T um;
+
+        um.memory = mem_new();
+
+        initialize_program(um.memory, instruction_stream);
+
+        for (int i = 0; i < NUM_REGISTERS; i++) {
+                um.registers[i] = 0;
+        }
+
+        um.program_counter = 0;
+
+        uint32_t program_length = segment_length(um.memory, 0);
+
+        /* UM will keep executing commands until it reaches the end of m[0]. */
+        while (um.program_counter < program_length) {
+
+                um_instruction = segment_word(um.memory, 0, um.program_counter);
+                uint32_t op_code = um_instruction >> 28;
+                //get_opcode(um_instruction);
+
+                /* Ensures that the instruction is valid. */
+                assert(op_code < 14);
+
+                if (op_code != 13) {
+                        um.ra = um_instruction << 23 >>29;
+                        um.rb = um_instruction << 26 >> 29;
+                        um.rc = um_instruction & 0x7;
+                }
+
+                if (op_code == 7) {
+                        mem_free(um.memory);
+                        break;              
+                }
+
+                //execute_command(&um, um_instruction, op_code);
+                uint32_t value;
+
+                switch (op_code)
+                {
+                        case 0: 
+                                if (um.registers[um.rc] != 0) {
+                                        um.registers[um.ra] = um.registers[um.rb];
+                                }
+                                break;
+                        case 1: 
+                                um.registers[um.ra] = segmented_load(um.memory,
+                                                        um.registers[um.rb], 
+                                                        um.registers[um.rc]);
+                                break;
+                        case 2: 
+                                segmented_store(um.memory, um.registers[um.ra], 
+                                um.registers[um.rb], um.registers[um.rc]);
+                                break;
+                        case 3: 
+                                um.registers[um.ra] = um.registers[um.rb] + um.registers[um.rc]; 
+                                break;
+                        case 4:
+                                um.registers[um.ra] = um.registers[um.rb] * um.registers[um.rc];
+                                break;
+                        case 5: 
+                                um.registers[um.ra] = um.registers[um.rb] / um.registers[um.rc];
+                                break;
+                        case 6: 
+                                // uint32_t rb_value = um.registers[um.rb];
+                                // uint32_t rc_value = um.registers[um.rc];
+                                um.registers[um.ra] = ~(um.registers[um.rb] & um.registers[um.rc]);
+                                break;
+                        case 8: 
+                                um.registers[um.rb] = map_segment(um.memory, um.registers[um.rc]);
+                                break;
+                        case 9: 
+                                unmap_segment(um.memory, um.registers[um.rc]);
+                                break;
+                        case 10: 
+                                putchar(um.registers[um.rc]);
+                                break;
+                        case 11: 
+                                um.registers[um.rc] = getchar();
+                                break;
+                        case 12: 
+                                load_program(um.memory, um.registers[um.rb]);
+                                um.program_counter = um.registers[um.rc];
+                                break;
+                        case 13: 
+                                um.ra = um_instruction << OP_CODE_LEN >> 29;
+                                value = um_instruction << 7 >> 7;
+                                um.registers[um.ra] = value;
+                                break;
+                }
+
+                (void)value;
+
+                /* If a new program is loaded, make sure that the program 
+                 * length is changed. */
+                if (op_code == 12) {
+                        program_length = segment_length(um.memory, 0);
+                        continue;
+                }
+
+                um.program_counter++;
+        }
 
         Seq_free(&instruction_stream);
         fclose(fp);
@@ -221,7 +326,7 @@ void unmap_segment(mem_T mem_segments, uint32_t id)
 *        instructions -- the stream of instructions for the UM
 * Output: none
 */
-void initalize_program(mem_T mem_segments, Seq_T instructions)
+void initialize_program(mem_T mem_segments, Seq_T instructions)
 {
         seg_T program = malloc(sizeof(*program));
         assert(program != NULL);
@@ -328,22 +433,22 @@ uint32_t segment_word(mem_T mem_segments, uint32_t id, int index)
 *        
 * Output: an instance of the um
 */
-static inline um_T initalize_um(Seq_T instructions)
-{
-        um_T um;
+// static inline um_T initialize_um(Seq_T instructions)
+// {
+//         um_T um;
 
-        um.memory = mem_new();
+//         um.memory = mem_new();
 
-        initalize_program(um.memory, instructions);
+//         initialize_program(um.memory, instructions);
 
-        for (int i = 0; i < NUM_REGISTERS; i++) {
-                um.registers[i] = 0;
-        }
+//         for (int i = 0; i < NUM_REGISTERS; i++) {
+//                 um.registers[i] = 0;
+//         }
 
-        um.program_counter = 0;
+//         um.program_counter = 0;
 
-        return um;
-} 
+//         return um;
+// } 
 
 /* Purpose: takes the instruction bit and extracts the register values
 * Input: instruction -- 32-bit encodings which tell the UM what to do
@@ -365,11 +470,11 @@ static inline void set_three_registers(uint32_t instruction, um_T *um)
 *        and register information
 * Output: none
 */
-static inline uint32_t set_one_register(uint32_t instruction, um_T *um)
-{
-        um->ra = instruction << OP_CODE_LEN >> 29; //Bitpack_getu(instruction, REGISTER_LEN, VALUE_LEN);
-        return instruction << 7 >> 7; //Bitpack_getu(instruction, VALUE_LEN, 0);
-}
+// static inline uint32_t set_one_register(uint32_t instruction, um_T *um)
+// {
+//         um->ra = instruction << OP_CODE_LEN >> 29; //Bitpack_getu(instruction, REGISTER_LEN, VALUE_LEN);
+//         return instruction << 7 >> 7; //Bitpack_getu(instruction, VALUE_LEN, 0);
+// }
 
 /* Purpose: getter function that returns the opcode by extracting
 *           the four most significant bits from the instruction word
@@ -391,87 +496,87 @@ static inline uint32_t get_opcode(uint32_t instruction)
 *          uint32_t op_code -- contains command to be run     
 * Output:  none
 */
-static inline void execute_command(um_T *um, uint32_t instruction, 
-                                   uint32_t op_code)
-{
-        uint32_t value;
+// static inline void execute_command(um_T *um, uint32_t instruction, 
+//                                    uint32_t op_code)
+// {
+//         uint32_t value;
 
-        switch (op_code)
-        {
-                case 0: 
-                        set_three_registers(instruction, um);
-                        if (um->registers[um->rc] != 0) {
-                                um->registers[um->ra] = um->registers[um->rb];
-                        }
-                        break;
-                case 1: 
-                        set_three_registers(instruction, um);
-                        um->registers[um->ra] = segmented_load(um->memory,
-                                                um->registers[um->rb], 
-                                                um->registers[um->rc]);
-                        break;
-                case 2: 
-                        set_three_registers(instruction, um);
-                        segmented_store(um->memory, um->registers[um->ra], 
-                        um->registers[um->rb], um->registers[um->rc]);
-                        break;
-                case 3: 
-                        set_three_registers(instruction, um);
-                        um->registers[um->ra] = um->registers[um->rb] + um->registers[um->rc]; 
-                        break;
-                case 4:
-                        set_three_registers(instruction, um);
-                        um->registers[um->ra] = um->registers[um->rb] * um->registers[um->rc];
-                        break;
-                case 5: 
-                        set_three_registers(instruction, um);
-                        um->registers[um->ra] = um->registers[um->rb] / um->registers[um->rc];
-                        break;
-                case 6: 
-                        set_three_registers(instruction, um);
-                        uint32_t rb_value = um->registers[um->rb];
-                        uint32_t rc_value = um->registers[um->rc];
-                        um->registers[um->ra] = ~(rb_value & rc_value);
-                        break;
-                case 8: 
-                        set_three_registers(instruction, um);
-                        um->registers[um->rb] = map_segment(um->memory, um->registers[um->rc]);
-                        break;
-                case 9: 
-                        set_three_registers(instruction, um);
-                        unmap_segment(um->memory, um->registers[um->rc]);
-                        break;
-                case 10: 
-                        set_three_registers(instruction, um);
-                        putchar(um->registers[um->rc]);
-                        break;
-                case 11: 
-                        set_three_registers(instruction, um);
-                        um->registers[um->rc] = getchar();
-                        break;
-                case 12: 
-                        set_three_registers(instruction, um);
-                        load_program(um->memory, um->registers[um->rb]);
-                        um->program_counter = um->registers[um->rc];
-                        break;
-                case 13: 
-                        value = set_one_register(instruction, um);
-                        um->registers[um->ra] = value;
-                        break;
-        }
+//         switch (op_code)
+//         {
+//                 case 0: 
+//                         set_three_registers(instruction, um);
+//                         if (um->registers[um->rc] != 0) {
+//                                 um->registers[um->ra] = um->registers[um->rb];
+//                         }
+//                         break;
+//                 case 1: 
+//                         set_three_registers(instruction, um);
+//                         um->registers[um->ra] = segmented_load(um->memory,
+//                                                 um->registers[um->rb], 
+//                                                 um->registers[um->rc]);
+//                         break;
+//                 case 2: 
+//                         set_three_registers(instruction, um);
+//                         segmented_store(um->memory, um->registers[um->ra], 
+//                         um->registers[um->rb], um->registers[um->rc]);
+//                         break;
+//                 case 3: 
+//                         set_three_registers(instruction, um);
+//                         um->registers[um->ra] = um->registers[um->rb] + um->registers[um->rc]; 
+//                         break;
+//                 case 4:
+//                         set_three_registers(instruction, um);
+//                         um->registers[um->ra] = um->registers[um->rb] * um->registers[um->rc];
+//                         break;
+//                 case 5: 
+//                         set_three_registers(instruction, um);
+//                         um->registers[um->ra] = um->registers[um->rb] / um->registers[um->rc];
+//                         break;
+//                 case 6: 
+//                         set_three_registers(instruction, um);
+//                         uint32_t rb_value = um->registers[um->rb];
+//                         uint32_t rc_value = um->registers[um->rc];
+//                         um->registers[um->ra] = ~(rb_value & rc_value);
+//                         break;
+//                 case 8: 
+//                         set_three_registers(instruction, um);
+//                         um->registers[um->rb] = map_segment(um->memory, um->registers[um->rc]);
+//                         break;
+//                 case 9: 
+//                         set_three_registers(instruction, um);
+//                         unmap_segment(um->memory, um->registers[um->rc]);
+//                         break;
+//                 case 10: 
+//                         set_three_registers(instruction, um);
+//                         putchar(um->registers[um->rc]);
+//                         break;
+//                 case 11: 
+//                         set_three_registers(instruction, um);
+//                         um->registers[um->rc] = getchar();
+//                         break;
+//                 case 12: 
+//                         set_three_registers(instruction, um);
+//                         load_program(um->memory, um->registers[um->rb]);
+//                         um->program_counter = um->registers[um->rc];
+//                         break;
+//                 case 13: 
+//                         value = set_one_register(instruction, um);
+//                         um->registers[um->ra] = value;
+//                         break;
+//         }
 
-        (void)value;
-}
+//         (void)value;
+// }
 
 /* Purpose: gets the length of the the program stored in m[0]
 * Input: um -- our Universal Machine struct containing our memory
 *        and register information
 * Output: the length of the program
 */
-static inline uint32_t get_program_length(um_T *um)
-{
-        return segment_length(um->memory, 0);
-}
+// static inline uint32_t get_program_length(um_T *um)
+// {
+//         return segment_length(um->memory, 0);
+// }
 
 
 /* Purpose: runs our UM program
@@ -479,41 +584,41 @@ static inline uint32_t get_program_length(um_T *um)
 *        and register information
 * Output: none
 */
-void run_um(Seq_T instructions)
-{
-        uint32_t um_instruction;
+// void run_um(Seq_T instructions)
+// {
+//         uint32_t um_instruction;
 
-        um_T um = initalize_um(instructions);
-        uint32_t program_length = get_program_length(&um);
+//         um_T um = initialize_um(instructions);
+//         uint32_t program_length = get_program_length(&um);
 
-        /* UM will keep executing commands until it reaches the end of m[0]. */
-        while (um.program_counter < program_length) {
+//         /* UM will keep executing commands until it reaches the end of m[0]. */
+//         while (um.program_counter < program_length) {
 
-                um_instruction = segment_word(um.memory, 0, um.program_counter);
-                uint32_t op_code = um_instruction >> 28;
-                //get_opcode(um_instruction);
+//                 um_instruction = segment_word(um.memory, 0, um.program_counter);
+//                 uint32_t op_code = um_instruction >> 28;
+//                 //get_opcode(um_instruction);
 
-                /* Ensures that the instruction is valid. */
-                assert(op_code < 14);
+//                 /* Ensures that the instruction is valid. */
+//                 assert(op_code < 14);
 
-                if (op_code == 7) {
-                        set_three_registers(um_instruction, &um);
-                        mem_free(um.memory);
-                        return;              
-                }
+//                 if (op_code == 7) {
+//                         set_three_registers(um_instruction, &um);
+//                         mem_free(um.memory);
+//                         return;              
+//                 }
 
-                execute_command(&um, um_instruction, op_code);
+//                 execute_command(&um, um_instruction, op_code);
 
-                /* If a new program is loaded, make sure that the program 
-                 * length is changed. */
-                if (op_code == 12) {
-                        program_length = get_program_length(&um);
-                        continue;
-                }
+//                 /* If a new program is loaded, make sure that the program 
+//                  * length is changed. */
+//                 if (op_code == 12) {
+//                         program_length = get_program_length(&um);
+//                         continue;
+//                 }
 
-                um.program_counter++;
-        }      
-} 
+//                 um.program_counter++;
+//         }      
+// } 
 
 #undef NUM_REGISTERS
 #undef OP_CODE_LEN
