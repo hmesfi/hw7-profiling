@@ -12,7 +12,7 @@ EXECS   = um
 
 all: $(EXECS)
 
-um: um_driver.o um.o memory_segment.o io.o
+um: um_driver.o um.o memory_segment.o
 	$(CC) $(LDFLAGS) $^ -o $@ $(LDLIBS)
 
 # To get *any* .o file, compile its .c file with the following rule.
