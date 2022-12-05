@@ -18,6 +18,7 @@
 #include <stdio.h>
 #include <assert.h>
 #include <stdint.h>
+#include <sys/stat.h>
 #include <seq.h>
 
 #define HINT 100
@@ -61,7 +62,7 @@ uint32_t map_segment(mem_T mem_segments, uint32_t num_words);
 /* Unmaps a memory segment. */
 void unmap_segment(mem_T mem_segments, uint32_t identifier);
 /* Creates the program m[0] and stores it in memory. */
-void initialize_program(mem_T mem_segments, Seq_T instructions);
+void initialize_program(mem_T mem_segments, int program_length);
 /* Retrieves a word from memory. */
 uint32_t segmented_load(mem_T mem_segments, uint32_t id, uint32_t index);
 /* Stores a word from memory. */
@@ -83,13 +84,44 @@ int main(int argc, char *argv[])
 
         FILE *fp = open_or_abort(argv[1], "rb");
 
-        /* Create the instruction stream that will be used to run the UM. */
-        Seq_T instruction_stream = Seq_new(HINT);
-        
+        um_T um;
+
+        um.memory = mem_new();
+
+        //initialize_program(um.memory, instruction_stream);
+
+        /*******************************************************************/
+
+        /* 
+         * confirm scan of provided program successful, then get info 
+         * Note: size of file divided by 4 since 32-bit word == 4 bytes,
+         * so this gives us total number of 32-bit words
+         */
+        struct stat program_info;
+        assert(stat(argv[1], &program_info) == 0); // may be unneccessary
+
+        /* Note: will only read up to the last complete word in file */
+        const int total_words = program_info.st_size / 4;
+
+        //map_seg(all_segments, total_words);
+        initialize_program(um.memory, total_words);
+
+        //FILE *fp = fopen(pathname, "r");
+        //assert(fp != NULL);
+
+        /* write each word in segment one byte at a time (big endian order) */
+        uint32_t *segment_zero = ((seg_T)Seq_get(um.memory->mapped_ids, 0))->segments;
         int c = fgetc(fp);
         uint32_t um_instruction, mask;
-
-        while (c != EOF) {
+        
+        for (int word = 0; word < total_words; word++) {
+                // for (int lsb = 24; lsb >= 0; lsb -= 8) {
+                //         uint32_t piece = getc(fp);
+                //         segment_zero[word] = Bitpack_newu(segment_zero[word], 
+                //                                           8,
+                //                                           lsb,
+                //                                           piece);
+                // }
                 um_instruction = 0;
 
                 for (int i = INSTRUCTION_LEN - 1; i >= 0; i--) {
@@ -99,19 +131,37 @@ int main(int argc, char *argv[])
                         c = fgetc(fp);
                 }
 
-                Seq_addhi(instruction_stream, 
-                          (void *)(uintptr_t) um_instruction);
+                segment_zero[word] = um_instruction;
         }
+
+        //fclose(fp);
+        //return segment_zero;
+
+        /* Create the instruction stream that will be used to run the UM. */
+        // Seq_T instruction_stream = Seq_new(HINT);
+        
+        // int c = fgetc(fp);
+        // uint32_t um_instruction, mask;
+
+        // for (int word = 0; word < total_words; word++) {
+        //         um_instruction = 0;
+
+        //         for (int i = INSTRUCTION_LEN - 1; i >= 0; i--) {
+        //                 mask = c;
+        //                 mask = mask << (i * (INSTRUCTION_LEN * 2));
+        //                 um_instruction = um_instruction | mask;
+        //                 c = fgetc(fp);
+        //         }
+
+        //         Seq_addhi(instruction_stream, 
+        //                   (void *)(uintptr_t) um_instruction);
+        // }
 
         //run_um(instruction_stream);
         // uint32_t um_instruction;
 
         //um_T um = initialize_um(instructions_stream);
-        um_T um;
-
-        um.memory = mem_new();
-
-        initialize_program(um.memory, instruction_stream);
+        
 
         for (int i = 0; i < NUM_REGISTERS; i++) {
                 um.registers[i] = 0;
@@ -208,7 +258,7 @@ int main(int argc, char *argv[])
                 um.program_counter++;
         }
 
-        Seq_free(&instruction_stream);
+        //Seq_free(&instruction_stream);
         fclose(fp);
 
         return EXIT_SUCCESS; 
@@ -254,12 +304,11 @@ void mem_free(mem_T mem_segments)
         
         /* Frees the array of words inside the memory segment. */
         for (uint32_t i = 0; i < length; i++) {
-            if (Seq_get(mem_segments->mapped_ids, i) != NULL) {
                 seg_T delete_segment = Seq_get(mem_segments->mapped_ids, i);
-
-                free(delete_segment->segments);
-                free(delete_segment);
-            }
+                if (delete_segment != NULL) {
+                        free(delete_segment->segments);
+                        free(delete_segment);
+                }
         }
 
         Seq_free(&(mem_segments->mapped_ids));
@@ -323,23 +372,23 @@ void unmap_segment(mem_T mem_segments, uint32_t id)
 *        instructions -- the stream of instructions for the UM
 * Output: none
 */
-void initialize_program(mem_T mem_segments, Seq_T instructions)
+void initialize_program(mem_T mem_segments, int program_length)
 {
         seg_T program = malloc(sizeof(*program));
         assert(program != NULL);
         
-        uint32_t *m0 = calloc(Seq_length(instructions), sizeof(m0));
+        uint32_t *m0 = calloc(program_length, sizeof(m0));
         assert(m0 != NULL);
 
 
-        /* Copy the instructions from the stream of instructions into the 
-         * program. */
-        for (int i = 0; i < Seq_length(instructions); i++) {
-                m0[i] = (uint32_t)(uintptr_t)Seq_get(instructions, i);
-        }
+        // /* Copy the instructions from the stream of instructions into the 
+        //  * program. */
+        // for (int i = 0; i < Seq_length(instructions); i++) {
+        //         m0[i] = (uint32_t)(uintptr_t)Seq_get(instructions, i);
+        // }
 
         program->segments = m0;
-        program->seg_length = Seq_length(instructions);
+        program->seg_length = program_length;
 
         Seq_addhi(mem_segments->mapped_ids, program);
 }
