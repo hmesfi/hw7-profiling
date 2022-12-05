@@ -18,7 +18,6 @@
 #include <stdio.h>
 #include <assert.h>
 #include <stdint.h>
-#include <bitpack.h>
 #include <seq.h>
 
 #define HINT 100
@@ -88,15 +87,15 @@ int main(int argc, char *argv[])
         Seq_T instruction_stream = Seq_new(HINT);
         
         int c = fgetc(fp);
+        uint32_t um_instruction, mask;
 
         while (c != EOF) {
-                uint32_t um_instruction = 0;
+                um_instruction = 0;
 
                 for (int i = INSTRUCTION_LEN - 1; i >= 0; i--) {
-                        um_instruction = Bitpack_newu(um_instruction,
-                                                      INSTRUCTION_LEN * 2,
-                                                      i * (INSTRUCTION_LEN * 2),
-                                                      c);
+                        mask = c;
+                        mask = mask << (i * (INSTRUCTION_LEN * 2));
+                        um_instruction = um_instruction | mask;
                         c = fgetc(fp);
                 }
 
@@ -105,7 +104,7 @@ int main(int argc, char *argv[])
         }
 
         //run_um(instruction_stream);
-        uint32_t um_instruction;
+        // uint32_t um_instruction;
 
         //um_T um = initialize_um(instructions_stream);
         um_T um;
@@ -172,8 +171,6 @@ int main(int argc, char *argv[])
                                 um.registers[um.ra] = um.registers[um.rb] / um.registers[um.rc];
                                 break;
                         case 6: 
-                                // uint32_t rb_value = um.registers[um.rb];
-                                // uint32_t rc_value = um.registers[um.rc];
                                 um.registers[um.ra] = ~(um.registers[um.rb] & um.registers[um.rc]);
                                 break;
                         case 8: 
@@ -459,8 +456,8 @@ uint32_t segment_word(mem_T mem_segments, uint32_t id, int index)
 static inline void set_three_registers(uint32_t instruction, um_T *um)
 {
         um->ra = instruction << 23 >>29;
-        um->rb = instruction << 26 >> 29; //Bitpack_getu(instruction, REGISTER_LEN, REGISTER_LEN);
-        um->rc = instruction & 0x7; //Bitpack_getu(instruction, REGISTER_LEN, 0);
+        um->rb = instruction << 26 >> 29;
+        um->rc = instruction & 0x7;
 }
 
 /* Purpose: specifically for opcode 13, takes the instruction bit and 
