@@ -51,20 +51,6 @@ typedef struct um_T {
         unsigned ra, rb, rc;
 } um_T;
 
-/* Performs all the functions of the UM. */
-void run_um(Seq_T instructions); 
-
-/* Memory Segment functions */
-
-/* Maps a memory segment. */
-uint32_t map_segment(mem_T mem_segments, uint32_t num_words);
-/* Unmaps a memory segment. */
-void unmap_segment(mem_T mem_segments, uint32_t identifier);
-/* Creates the program m[0] using a segment stored in memory. */
-void load_program(mem_T mem_segments, uint32_t id);
-
-
-
 int main(int argc, char *argv[])
 {
         if (argc != 2) {
@@ -165,60 +151,137 @@ int main(int argc, char *argv[])
                 }
 
                 //execute_command(&um, um_instruction, op_code);
-                uint32_t value;
 
-                switch (op_code)
-                {
-                        case 0: 
-                                if (um.registers[um.rc] != 0) {
-                                        um.registers[um.ra] = um.registers[um.rb];
+                // switch (op_code)
+                // {
+                if (op_code == 0) { 
+                        if (um.registers[um.rc] != 0) {
+                                um.registers[um.ra] = um.registers[um.rb];
+                        }
+                } else if (op_code == 1) { 
+                        um.registers[um.ra] = (um.memory->mapped_ids[um.registers[um.rb]])->
+                                                                segments[um.registers[um.rc]];
+                } else if (op_code == 2){
+                        // segmented_store(um.memory, um.registers[um.ra], 
+                        // um.registers[um.rb], um.registers[um.rc]);
+                        (um.memory->mapped_ids[um.registers[um.ra]])->segments[um.registers[um.rb]] = um.registers[um.rc];
+                } else if (op_code == 3) { 
+                        um.registers[um.ra] = um.registers[um.rb] + um.registers[um.rc]; 
+                } else if (op_code == 4) {
+                        um.registers[um.ra] = um.registers[um.rb] * um.registers[um.rc];
+                } else if (op_code == 5) {
+                        um.registers[um.ra] = um.registers[um.rb] / um.registers[um.rc];
+                } else if (op_code == 6) {
+                        um.registers[um.ra] = ~(um.registers[um.rb] & um.registers[um.rc]);
+                } else if (op_code == 8) {
+                        seg_T new_segment = malloc(sizeof(*new_segment));
+                        assert(new_segment != NULL);
+
+                        uint32_t *new_seg = calloc(um.registers[um.rc], sizeof(new_seg));
+                        assert(new_seg != NULL);
+
+                        new_segment->segments = new_seg;
+                        new_segment->seg_length = um.registers[um.rc];
+
+                        uint32_t new_id;
+                        
+                        /* Attempts to reuse an unmapped segment identifier. */
+                        if (Seq_length(um.memory->unmapped_ids) != 0) {
+                                new_id = (uint32_t)(uintptr_t)
+                                        Seq_remlo(um.memory->unmapped_ids);
+                        } else {
+                                new_id = um.memory->mapped_used;
+
+                                if ((new_id == um.memory->mapped_length) &&
+                                (um.memory->mapped_length != UINT32_MAX)) {
+                                        um.memory->mapped_length =
+                                                um.memory->mapped_length * 2;
+                                        um.memory->mapped_ids = realloc(
+                                                        um.memory->mapped_ids,
+                                                        um.memory->mapped_length * sizeof(seg_T));
                                 }
-                                break;
-                        case 1: 
-                                um.registers[um.ra] = (um.memory->mapped_ids[um.registers[um.rb]])->
-                                                                    segments[um.registers[um.rc]];
-                                break;
-                        case 2: 
-                                // segmented_store(um.memory, um.registers[um.ra], 
-                                // um.registers[um.rb], um.registers[um.rc]);
-                                (um.memory->mapped_ids[um.registers[um.ra]])->segments[um.registers[um.rb]] = um.registers[um.rc];
-                                break;
-                        case 3: 
-                                um.registers[um.ra] = um.registers[um.rb] + um.registers[um.rc]; 
-                                break;
-                        case 4:
-                                um.registers[um.ra] = um.registers[um.rb] * um.registers[um.rc];
-                                break;
-                        case 5: 
-                                um.registers[um.ra] = um.registers[um.rb] / um.registers[um.rc];
-                                break;
-                        case 6: 
-                                um.registers[um.ra] = ~(um.registers[um.rb] & um.registers[um.rc]);
-                                break;
-                        case 8: 
-                                um.registers[um.rb] = map_segment(um.memory, um.registers[um.rc]);
-                                break;
-                        case 9: 
-                                unmap_segment(um.memory, um.registers[um.rc]);
-                                break;
-                        case 10: 
-                                putchar(um.registers[um.rc]);
-                                break;
-                        case 11: 
-                                um.registers[um.rc] = getchar();
-                                break;
-                        case 12: 
-                                load_program(um.memory, um.registers[um.rb]);
-                                um.program_counter = um.registers[um.rc];
-                                break;
-                        case 13: 
-                                um.ra = um_instruction << OP_CODE_LEN >> 29;
-                                value = um_instruction << 7 >> 7;
-                                um.registers[um.ra] = value;
-                                break;
-                }
+                        }
 
-                (void)value;
+                        um.memory->mapped_ids[new_id] = new_segment;
+                        um.memory->mapped_used++;
+
+                        um.registers[um.rb] = new_id;
+                } else if (op_code == 9) {
+                        uint32_t id = um.registers[um.rc];
+                        seg_T delete_segment = um.memory->mapped_ids[id];
+
+                        free(delete_segment->segments);
+                        free(delete_segment);
+                        
+                        um.memory->mapped_ids[id] = NULL;
+                        (um.memory->mapped_used)--;
+                        
+                        Seq_addlo(um.memory->unmapped_ids, (void *)(uintptr_t)id);
+                } else if (op_code == 10) { 
+                        putchar(um.registers[um.rc]);
+                } else if (op_code == 11) {
+                        um.registers[um.rc] = getchar();
+                } else if (op_code == 12){ 
+                        uint32_t id = um.registers[um.rb];
+                         if (id != 0) {
+                                seg_T segment = um.memory->mapped_ids[id];
+                                
+                                seg_T delete_segment = um.memory->mapped_ids[0];
+
+                                free(delete_segment->segments);
+                                free(delete_segment);
+                                
+                                um.memory->mapped_ids[0] = NULL;
+                                (um.memory->mapped_used)--;
+                                
+                                Seq_addlo(um.memory->unmapped_ids, (void *)(uintptr_t)0);
+
+                                seg_T new_segment = malloc(sizeof(*new_segment));
+                                assert(new_segment != NULL);
+
+                                uint32_t *new_seg = calloc(segment->seg_length, sizeof(new_seg));
+                                assert(new_seg != NULL);
+
+                                new_segment->segments = new_seg;
+                                new_segment->seg_length = segment->seg_length;
+
+                                uint32_t new_id;
+                                
+                                /* Attempts to reuse an unmapped segment identifier. */
+                                if (Seq_length(um.memory->unmapped_ids) != 0) {
+                                        new_id = (uint32_t)(uintptr_t)
+                                                Seq_remlo(um.memory->unmapped_ids);
+                                } else {
+                                        new_id = um.memory->mapped_used;
+
+                                        if ((new_id == um.memory->mapped_length) &&
+                                        (um.memory->mapped_length != UINT32_MAX)) {
+                                                um.memory->mapped_length =
+                                                        um.memory->mapped_length * 2;
+                                                um.memory->mapped_ids = realloc(
+                                                                um.memory->mapped_ids,
+                                                                um.memory->mapped_length * sizeof(seg_T));
+                                        }
+                                }
+
+                                um.memory->mapped_ids[new_id] = new_segment;
+                                um.memory->mapped_used++;
+
+                                // end of map seg        
+                                
+                                seg_T new_m0 = um.memory->mapped_ids[new_id];
+                                // seg_T new_m0 = Seq_get(mem_segments->mapped_ids, new_id);
+
+                                /* Copy the instructions from segment into the new program. */
+                                for (int i = 0; i < segment->seg_length; i++) {
+                                        new_m0->segments[i] = segment->segments[i];
+                                }
+                        }
+                        um.program_counter = um.registers[um.rc];
+                } else if (op_code == 13){
+                        um.ra = um_instruction << OP_CODE_LEN >> 29;
+                        um.registers[um.ra] = um_instruction << 7 >> 7;
+                }
 
                 /* If a new program is loaded, make sure that the program 
                  * length is changed. */
@@ -234,99 +297,6 @@ int main(int argc, char *argv[])
         fclose(fp);
 
         return EXIT_SUCCESS; 
-}
-
-/* MEMORY FUNCTIONS */
-
-/* Purpose: To map a segment of memory
-* Input: mem_segments -- our memory struct containing our sequences
-*        num_words -- the size of the memory segment 
-* Output: none
-* It is a checked runtime error to try to map more than 2^32 segments.
-*/
-uint32_t map_segment(mem_T mem_segments, uint32_t num_words)
-{
-        seg_T new_segment = malloc(sizeof(*new_segment));
-        assert(new_segment != NULL);
-
-        uint32_t *new_seg = calloc(num_words, sizeof(new_seg));
-        assert(new_seg != NULL);
-
-        new_segment->segments = new_seg;
-        new_segment->seg_length = num_words;
-
-        uint32_t new_id;
-        
-        /* Attempts to reuse an unmapped segment identifier. */
-        if (Seq_length(mem_segments->unmapped_ids) != 0) {
-                new_id = (uint32_t)(uintptr_t)
-                         Seq_remlo(mem_segments->unmapped_ids);
-        } else {
-                new_id = mem_segments->mapped_used;
-
-                if ((new_id == mem_segments->mapped_length) &&
-                    (mem_segments->mapped_length != UINT32_MAX)) {
-                        mem_segments->mapped_length =
-                                mem_segments->mapped_length * 2;
-                        mem_segments->mapped_ids = realloc(
-                                        mem_segments->mapped_ids,
-                                        mem_segments->mapped_length * sizeof(seg_T));
-                    }
-        }
-
-        mem_segments->mapped_ids[new_id] = new_segment;
-        mem_segments->mapped_used++;
-
-        return new_id;
-}
-
-/* Purpose: To unmap a segment of memory
-* Input: mem_segments -- our memory struct containing our sequences
-*        id -- the memory segment's identifier
-* Output: none
-*/
-void unmap_segment(mem_T mem_segments, uint32_t id)
-{
-        seg_T delete_segment = mem_segments->mapped_ids[id];
-        //assert(delete_segment != NULL);
-
-        free(delete_segment->segments);
-        free(delete_segment);
-        
-        mem_segments->mapped_ids[id] = NULL;
-        (mem_segments->mapped_used)--;
-        // Seq_put(mem_segments->mapped_ids, id, NULL);
-        
-        Seq_addlo(mem_segments->unmapped_ids, (void *)(uintptr_t)id);
-}
-
-
-
-/* Purpose: loads a new program m[0] from a memory segment
-* Input: mem_segments -- our memory struct containing our sequences
-*                  id -- the memory segment identifier
-* Output: None
-* Effects: changes the running program
-*/
-void load_program(mem_T mem_segments, uint32_t id)
-{
-        if (id == 0) {
-                return;
-        }
-
-        // seg_T segment = Seq_get(mem_segments->mapped_ids, id);
-        seg_T segment = mem_segments->mapped_ids[id];
-        
-        unmap_segment(mem_segments, 0);
-
-        uint32_t new_id = map_segment(mem_segments, segment->seg_length);
-        seg_T new_m0 = mem_segments->mapped_ids[new_id];
-        // seg_T new_m0 = Seq_get(mem_segments->mapped_ids, new_id);
-
-        /* Copy the instructions from segment into the new program. */
-        for (int i = 0; i < segment->seg_length; i++) {
-                new_m0->segments[i] = segment->segments[i];
-        }
 }
 
 #undef NUM_REGISTERS
